@@ -108,7 +108,7 @@ class RandomGenerator(object):
             image, label = random_rotate(image, label)
         x, y = image.shape
         if x != self.output_size[0] or y != self.output_size[1]:
-            image = zoom(image, (self.output_size[0] / x, self.output_size[1] / y), order=3)  # why not 3?
+            image = zoom(image, (self.output_size[0] / x, self.output_size[1] / y), order=3)
             label = zoom(label, (self.output_size[0] / x, self.output_size[1] / y), order=0)
         image = torch.from_numpy(image.astype(np.float32)).unsqueeze(0)
         label = torch.from_numpy(label.astype(np.float32))

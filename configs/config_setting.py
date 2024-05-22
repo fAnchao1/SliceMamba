@@ -16,10 +16,10 @@ class setting_config:
         'depths': [2,2,9,2],
         'depths_decoder': [2,2,2,1],
         'drop_path_rate': 0.2,
-        'load_ckpt_path':'./pre_trained_weights/ckpt.pth'
+        'load_ckpt_path':None#'./pre_trained_weights/ckpt.pth'
     }
 
-    datasets = 'isic17' 
+    datasets = 'polyp' 
     if datasets == 'isic18':
         data_path = './data/isic2018/'
     elif datasets == 'isic17':
@@ -48,7 +48,6 @@ class setting_config:
     epochs = 300
 
     work_dir = 'results/' + network + '_' + datasets + '_' + datetime.now().strftime('%A_%d_%B_%Y_%Hh_%Mm_%Ss') + '/'
-
     print_interval = 20
     val_interval = 30
     save_interval = 1

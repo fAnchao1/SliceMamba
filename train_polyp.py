@@ -87,8 +87,7 @@ def main(config):
 
     cal_params_flops(model, 256, logger)
 
-
-
+ 
 
 
     print('#----------Prepareing loss, opt, sch and amp----------#')
@@ -171,11 +170,14 @@ def main(config):
                 'optimizer_state_dict': optimizer.state_dict(),
                 'scheduler_state_dict': scheduler.state_dict(),
             }, os.path.join(checkpoint_dir, 'latest.pth')) 
+   
 
     if os.path.exists(os.path.join(checkpoint_dir, 'best.pth')):
         print('#----------Testing----------#')
         best_weight = torch.load(config.work_dir + 'checkpoints/best.pth', map_location=torch.device('cpu'))
+        
         model.load_state_dict(best_weight)
+        
         for name in ['CVC-300', 'CVC-ClinicDB', 'Kvasir', 'CVC-ColonDB']:
             val_loader_t = val_loader_dict[name]
             loss = test_one_epoch(

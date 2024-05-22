@@ -247,7 +247,7 @@ class Final_PatchExpand2D(nn.Module):
         return x
 
 
-class SS2D(nn.Module):
+class BSS(nn.Module):
     def __init__(
         self,
         d_model,
@@ -495,7 +495,7 @@ class VSSBlock(nn.Module):
     ):
         super().__init__()
         self.ln_1 = norm_layer(hidden_dim)
-        self.self_attention = SS2D(d_model=hidden_dim, dropout=attn_drop_rate, d_state=d_state, **kwargs)
+        self.self_attention = BSS(d_model=hidden_dim, dropout=attn_drop_rate, d_state=d_state, **kwargs)
         self.drop_path = DropPath(drop_path)
 
     def forward(self, input: torch.Tensor):
