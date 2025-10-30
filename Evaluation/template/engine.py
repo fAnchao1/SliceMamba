@@ -25,14 +25,13 @@ def train_one_epoch(train_loader,
     loss_list = []
 
     for iter, data in enumerate(train_loader):
-        architecture = lambda:tuple(np.random.randint(4) for i in range(22))
-        random_archi = architecture()
+        
         step += iter
         optimizer.zero_grad()
         images, targets = data
         images, targets = images.cuda(non_blocking=True).float(), targets.cuda(non_blocking=True).float()
-        print(f"archi:{random_archi}")
-        out = model(images,random_archi)
+        # print(f"archi:{architecture}")
+        out = model(images)
         loss = criterion(out, targets)
 
         loss.backward()
@@ -64,13 +63,13 @@ def val_one_epoch(test_loader,
     preds = []
     gts = []
     loss_list = []
-    architecture = lambda:tuple(np.random.randint(4) for i in range(22))
+    
     with torch.no_grad():
         for data in tqdm(test_loader):
             img, msk = data
             img, msk = img.cuda(non_blocking=True).float(), msk.cuda(non_blocking=True).float()
 
-            out = model(img,architecture())
+            out = model(img)
             loss = criterion(out, msk)
 
             loss_list.append(loss.item())
@@ -79,6 +78,16 @@ def val_one_epoch(test_loader,
                 out = out[0]
             out = out.squeeze(1).cpu().detach().numpy()
             preds.append(out) 
+        ##########fc##################   
+        preds = np.array(preds).reshape(-1)
+        gts = np.array(gts).reshape(-1)
+
+        y_pre = np.where(preds>=config.threshold, 1, 0)
+        y_true = np.where(gts>=0.5, 1, 0)
+
+        confusion = confusion_matrix(y_true, y_pre)
+        TN, FP, FN, TP = confusion[0,0], confusion[0,1], confusion[1,0], confusion[1,1] 
+        ##########fc##################
 
     if epoch % config.val_interval == 0:
         preds = np.array(preds).reshape(-1)
@@ -107,17 +116,20 @@ def val_one_epoch(test_loader,
         logger.info(log_info)
 
     else:
-        log_info = f'val epoch: {epoch}, loss: {np.mean(loss_list):.4f}'
+        miou = float(TP) / float(TP + FP + FN) if float(TP + FP + FN) != 0 else 0
+        log_info = f'val epoch: {epoch}, loss: {np.mean(loss_list):.4f}, miou : {miou}'
         print(log_info)
         logger.info(log_info)
     
-    return np.mean(loss_list)
+    return np.mean(loss_list),miou
 
 
 def test_one_epoch(test_loader,
                     model,
-                    architecture,
-                    config):
+                    criterion,
+                    logger,
+                    config,
+                    test_data_name=None):
     # switch to evaluate mode
     model.eval()
     preds = []
@@ -128,14 +140,18 @@ def test_one_epoch(test_loader,
             img, msk = data
             img, msk = img.cuda(non_blocking=True).float(), msk.cuda(non_blocking=True).float()
 
-            out = model(img,architecture)
+            out = model(img)
+            loss = criterion(out, msk)
+
+            loss_list.append(loss.item())
             msk = msk.squeeze(1).cpu().detach().numpy()
             gts.append(msk)
             if type(out) is tuple:
                 out = out[0]
             out = out.squeeze(1).cpu().detach().numpy()
             preds.append(out) 
-            
+            if i % config.save_interval == 0:
+                 save_imgs(img, msk, out, i, config.work_dir + 'outputs/', config.datasets, config.threshold, test_data_name=test_data_name)
         preds = np.array(preds).reshape(-1)
         gts = np.array(gts).reshape(-1)
 
@@ -151,6 +167,13 @@ def test_one_epoch(test_loader,
         f1_or_dsc = float(2 * TP) / float(2 * TP + FP + FN) if float(2 * TP + FP + FN) != 0 else 0
         miou = float(TP) / float(TP + FP + FN) if float(TP + FP + FN) != 0 else 0
 
+        if test_data_name is not None:
+            log_info = f'test_datasets_name: {test_data_name}'
+            print(log_info)
+            logger.info(log_info)
+        log_info = f'test of best model, loss: {np.mean(loss_list):.4f},miou: {miou}, f1_or_dsc: {f1_or_dsc}, accuracy: {accuracy}, \
+                specificity: {specificity}, sensitivity: {sensitivity}, confusion_matrix: {confusion}'
+        print(log_info)
+        logger.info(log_info)
 
-
-    return miou,f1_or_dsc
+    return np.mean(loss_list)

@@ -7,10 +7,10 @@ class SMUNet(nn.Module):
     def __init__(self, 
                  input_channels=3, 
                  num_classes=1,
+                 architecture = None,
                  depths=[2, 2, 9, 2], 
                  depths_decoder=[2, 2, 2, 1],
-                 drop_path_rate=0.2,
-                 
+                 drop_path_rate=0.2,          
                  load_ckpt_path=None,
                 ):
         super().__init__()
@@ -20,15 +20,16 @@ class SMUNet(nn.Module):
 
         self.smunet = VSSM(in_chans=input_channels,
                            num_classes=num_classes,
+                           architecture = architecture,
                            depths=depths,
                            depths_decoder=depths_decoder,
                            drop_path_rate=drop_path_rate,
                         )
     
-    def forward(self, x,architecture):
+    def forward(self, x):
         if x.size()[1] == 1:
             x = x.repeat(1,3,1,1)
-        logits = self.smunet(x,architecture)
+        logits = self.smunet(x)
         if self.num_classes == 1: return torch.sigmoid(logits)
         else: return logits
     
@@ -37,6 +38,7 @@ class SMUNet(nn.Module):
             model_dict = self.smunet.state_dict()
             modelCheckpoint = torch.load(self.load_ckpt_path)
             pretrained_dict = modelCheckpoint['model']
+        
             new_dict = {k: v for k, v in pretrained_dict.items() if k in model_dict.keys()}
             model_dict.update(new_dict)
             print('Total model_dict: {}, Total pretrained_dict: {}, update: {}'.format(len(model_dict), len(pretrained_dict), len(new_dict)))

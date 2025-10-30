@@ -374,7 +374,70 @@ class myToTensor:
     def __call__(self, data):
         image, mask = data
         return torch.tensor(image).permute(2,0,1), torch.tensor(mask).permute(2,0,1)
-       
+
+class myrandom_zoom:
+    def __init__(self,zoom_range=(0.8, 1.2),P = 0.5):
+        self.zoom_range = zoom_range
+        self.p = P
+    def __call__(self,data):
+        image,mask = data
+
+        if random.random() < self.p:
+            return image,mask
+        else:
+            _, h, w = image.shape
+
+            zoom_factor = random.uniform(self.zoom_range[0], self.zoom_range[1])
+
+            # 计算新的尺寸
+            new_h, new_w = int(h * zoom_factor), int(w * zoom_factor)
+
+            # 缩放图像和掩码
+            zoomed_image = TF.resize(image, [new_h, new_w], interpolation=TF.InterpolationMode.BILINEAR)
+            zoomed_mask = TF.resize(mask, [new_h, new_w], interpolation=TF.InterpolationMode.NEAREST)
+
+            # 如果缩放后图像尺寸小于原尺寸，则需要进行填充
+            if zoom_factor < 1:
+                pad_h = (h - new_h) // 2
+                pad_w = (w - new_w) // 2
+                zoomed_image = TF.pad(zoomed_image, (pad_w, pad_h, w - new_w - pad_w, h - new_h - pad_h), fill=0)
+                zoomed_mask = TF.pad(zoomed_mask, (pad_w, pad_h, w - new_w - pad_w, h - new_h - pad_h), fill=0)
+            # 如果缩放后图像尺寸大于原尺寸，则需要进行裁剪
+            else:
+                start_h = (new_h - h) // 2
+                start_w = (new_w - w) // 2
+                zoomed_image = zoomed_image[:, start_h:start_h + h, start_w:start_w + w]
+                zoomed_mask = zoomed_mask[:, start_h:start_h + h, start_w:start_w + w]
+
+            return zoomed_image, zoomed_mask
+
+class myrandom_crop_and_resize:
+    def __init__(self,crop_size=(224, 224), target_size=(256, 256)):
+        self.crop_size = crop_size
+        self.target_size = target_size
+    def __call__(self,data):
+        image,mask = data
+
+        if random.random() < 0.5:
+            return image,mask
+        else:
+            _, h, w = image.shape
+            crop_h, crop_w = self.crop_size
+
+            if crop_h > h or crop_w > w:
+                raise ValueError("Crop size must be smaller than the image size")
+
+            # 随机选择裁剪的起始位置
+            top = random.randint(0, h - crop_h)
+            left = random.randint(0, w - crop_w)
+
+            cropped_image = image[:, top:top + crop_h, left:left + crop_w]
+            cropped_mask = mask[:, top:top + crop_h, left:left + crop_w]
+
+            resized_image = TF.resize(cropped_image, self.target_size, interpolation=TF.InterpolationMode.BILINEAR)
+            resized_mask = TF.resize(cropped_mask, self.target_size, interpolation=TF.InterpolationMode.NEAREST)
+            
+            return resized_image, resized_masks    
 
 class myResize:
     def __init__(self, size_h=256, size_w=256):

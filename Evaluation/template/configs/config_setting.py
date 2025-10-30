@@ -16,8 +16,8 @@ class setting_config:
         'depths': [2,2,9,2],
         'depths_decoder': [2,2,2,1],
         'drop_path_rate': 0.2,
-        'load_ckpt_path': None,
-        'supernet_path': '/path/to/checkpoints/best.pth'
+        'load_ckpt_path': './pretrained/**.pth',
+        'supernet_path': None
     }
 
     datasets = 'isic17' 
@@ -26,7 +26,7 @@ class setting_config:
     elif datasets == 'isic17':
         data_path = './data/isic2017/'
     elif datasets == 'polyp':
-        data_path = '/home/fc/workspace/poly_data/'
+        data_path = './poly_data/'
     else:
         raise Exception('datasets in not right!')
 
@@ -38,15 +38,15 @@ class setting_config:
     input_size_w = 256
     input_channels = 3
     distributed = False
-    local_rank = -10
+    local_rank = -1
     num_workers = 0
     seed = 42
     world_size = None
     rank = None
     amp = False
-    gpu_id = '0'
+    gpu_id = '3'
     batch_size = 32
-    epochs = 1#300
+    epochs = 300
     work_dir = 'results/' + network + '_' + datasets + '_' + datetime.now().strftime('%A_%d_%B_%Y_%Hh_%Mm_%Ss') + '/'
     print_interval = 20
     val_interval = 30
@@ -59,7 +59,9 @@ class setting_config:
         myRandomHorizontalFlip(p=0.5),
         myRandomVerticalFlip(p=0.5),
         myRandomRotation(p=0.5, degree=[0, 360]),
-        myResize(input_size_h, input_size_w)
+        myResize(input_size_h, input_size_w),
+        myrandom_zoom(zoom_range=(0.8, 1.2),P = 0.5), #ADD
+        myrandom_crop_and_resize(crop_size=(128, 128), target_size=(256, 256)) #ADD
     ])
     test_transformer = transforms.Compose([
         myNormalize(datasets, train=False),

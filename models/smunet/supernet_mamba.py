@@ -252,6 +252,7 @@ class BSS(nn.Module):
         self,
         d_model,
         d_state=16,
+        slice_method = [4,4],
         # d_state="auto", # 20240109
         d_conv=3,
         expand=2,
@@ -272,6 +273,7 @@ class BSS(nn.Module):
         super().__init__()
         self.d_model = d_model
         self.d_state = d_state
+        self.slice_method = slice_method
         # self.d_state = math.ceil(self.d_model / 6) if d_state == "auto" else d_model # 20240109
         self.d_conv = d_conv
         self.expand = expand
@@ -375,9 +377,11 @@ class BSS(nn.Module):
         D._no_weight_decay = True
         return D
 
-    def cut2slice(self,x,H,W,interval=4):
-        h_slice_num =H//interval
-        w_slice_num =W//interval
+    def cut2slice(self,x,H,W,interval_h=0,interval_w=0):
+        assert H%interval_h==0 and W%interval_w==0
+
+        h_slice_num =H//interval_h
+        w_slice_num =W//interval_w
         x_h_slice_res = torch.chunk(x,chunks=h_slice_num,dim=2)
         x_w_slice_res = torch.chunk(x,chunks=w_slice_num,dim=3)
         return x_h_slice_res,x_w_slice_res
@@ -403,12 +407,14 @@ class BSS(nn.Module):
         self.selective_scan = selective_scan_fn
         
         B, C, H, W = x.shape
-        interval=4 
+        interval_h = self.slice_method[0]
+        interval_w = self.slice_method[1]
+
         L = H * W
         K = 4
         ##############slice###################
 
-        x_h_slice_res , x_w_slice_res = self.cut2slice(x,H,W,interval=interval)
+        x_h_slice_res , x_w_slice_res = self.cut2slice(x,H,W,interval_h=interval_h,interval_w = interval_w)
         # x_w_h.x_w_w = x_w_slice_res[0].shape[2:]
         x_h_flatten_res = self.slice_h_flatten(x_h_slice_res)
         x_w_flatten_res = self.slice_w_flatten(x_w_slice_res)
@@ -442,19 +448,19 @@ class BSS(nn.Module):
         assert out_y.dtype == torch.float
         ########restore####################
 
-        y1 = torch.cat([out_y[:,0][:,:,i*interval*W:(i+1)*interval*W].reshape(B,-1,H,interval) for i in range(H//interval)],dim=3).transpose(3,2).contiguous()
+        y1 = torch.cat([out_y[:,0][:,:,i*interval_h*W:(i+1)*interval_h*W].reshape(B,-1,H,interval_h) for i in range(H//interval_h)],dim=3).transpose(3,2).contiguous()
         y1 = y1.view(B,-1,L)
         
         y2 = torch.flip(out_y[:,1],dims=[-1])
-        y2 = torch.cat([y2[:,:,i*interval*W:(i+1)*interval*W].reshape(B,-1,H,interval) for i in range(H//interval)],dim=3).transpose(3,2).contiguous()
+        y2 = torch.cat([y2[:,:,i*interval_h*W:(i+1)*interval_h*W].reshape(B,-1,H,interval_h) for i in range(H//interval_h)],dim=3).transpose(3,2).contiguous()
         y2 = y2.view(B,-1,L)
         
         
-        y3 = torch.cat([out_y[:,2][:,:,i*H*interval:(i+1)*H*interval].reshape(B,-1,H,interval) for i in range(W//interval)],dim=3)
+        y3 = torch.cat([out_y[:,2][:,:,i*H*interval_w:(i+1)*H*interval_w].reshape(B,-1,H,interval_w) for i in range(W//interval_w)],dim=3)
         y3 = y3.view(B,-1,L)
 
         y4 = torch.flip(out_y[:,3],dims=[-1])
-        y4 = torch.cat([y4[:,:,i*H*interval:(i+1)*H*interval].reshape(B,-1,H,interval) for i in range(W//interval)],dim=3)
+        y4 = torch.cat([y4[:,:,i*H*interval_w:(i+1)*H*interval_w].reshape(B,-1,H,interval_w) for i in range(W//interval_w)],dim=3)
         y4 = y4.view(B,-1,L)
 
         ########restore####################
@@ -491,11 +497,12 @@ class S3Block(nn.Module):
         norm_layer: Callable[..., torch.nn.Module] = partial(nn.LayerNorm, eps=1e-6),
         attn_drop_rate: float = 0,
         d_state: int = 16,
+        slice_method :list=[4,4],
         **kwargs,
     ):
         super().__init__()
         self.ln_1 = norm_layer(hidden_dim)
-        self.self_attention = BSS(d_model=hidden_dim, dropout=attn_drop_rate, d_state=d_state, **kwargs)
+        self.self_attention = BSS(d_model=hidden_dim, dropout=attn_drop_rate, d_state=d_state,slice_method=slice_method, **kwargs)
         self.drop_path = DropPath(drop_path)
 
     def forward(self, input: torch.Tensor):
@@ -532,15 +539,50 @@ class VSSLayer(nn.Module):
         self.dim = dim
         self.use_checkpoint = use_checkpoint
 
-        self.blocks = nn.ModuleList([
-            S3Block(
-                hidden_dim=dim,
-                drop_path=drop_path[i] if isinstance(drop_path, list) else drop_path,
-                norm_layer=norm_layer,
-                attn_drop_rate=attn_drop,
-                d_state=d_state,
-            )
-            for i in range(depth)])
+        self.blocks = nn.ModuleList()
+        for i in range(depth):
+            self.blocks.append(nn.ModuleList())
+            for index in range(4):
+                if index==0:
+                    split_method = [2,2]
+                    self.blocks[-1].append(S3Block(
+                                            hidden_dim=dim,
+                                            drop_path=drop_path[i] if isinstance(drop_path, list) else drop_path,
+                                            norm_layer=norm_layer,
+                                            attn_drop_rate=attn_drop,
+                                            d_state=d_state,
+                                            slice_method = split_method
+                                            ))
+                elif index==1:
+                    split_method = [2,4]
+                    self.blocks[-1].append(S3Block(
+                                            hidden_dim=dim,
+                                            drop_path=drop_path[i] if isinstance(drop_path, list) else drop_path,
+                                            norm_layer=norm_layer,
+                                            attn_drop_rate=attn_drop,
+                                            d_state=d_state,
+                                            slice_method = split_method
+                                            ))
+                elif index==2:
+                    split_method = [4,2]
+                    self.blocks[-1].append(S3Block(
+                                            hidden_dim=dim,
+                                            drop_path=drop_path[i] if isinstance(drop_path, list) else drop_path,
+                                            norm_layer=norm_layer,
+                                            attn_drop_rate=attn_drop,
+                                            d_state=d_state,
+                                            slice_method = split_method
+                                            ))
+                elif index==3:
+                    split_method = [4,4]
+                    self.blocks[-1].append(S3Block(
+                                            hidden_dim=dim,
+                                            drop_path=drop_path[i] if isinstance(drop_path, list) else drop_path,
+                                            norm_layer=norm_layer,
+                                            attn_drop_rate=attn_drop,
+                                            d_state=d_state,
+                                            slice_method = split_method
+                                            ))
         
         if True: # is this really applied? Yes, but been overriden later in VSSM!
             def _init_weights(module: nn.Module):
@@ -556,12 +598,10 @@ class VSSLayer(nn.Module):
             self.downsample = None
 
 
-    def forward(self, x):
-        for blk in self.blocks:
-            if self.use_checkpoint:
-                x = checkpoint.checkpoint(blk, x)
-            else:
-                x = blk(x)
+    def forward(self, x,archi_encoder):
+        for archs,arch_id in zip(self.blocks,archi_encoder):
+
+            x = archs[arch_id](x)
         
         if self.downsample is not None:
             x = self.downsample(x)
@@ -599,15 +639,52 @@ class VSSLayer_up(nn.Module):
         self.dim = dim
         self.use_checkpoint = use_checkpoint
 
-        self.blocks = nn.ModuleList([
-            S3Block(
-                hidden_dim=dim,
-                drop_path=drop_path[i] if isinstance(drop_path, list) else drop_path,
-                norm_layer=norm_layer,
-                attn_drop_rate=attn_drop,
-                d_state=d_state,
-            )
-            for i in range(depth)])
+        self.blocks = nn.ModuleList()
+        
+        for i in range(depth):
+            self.blocks.append(nn.ModuleList())
+
+            for index in range(4):
+                if index==0:
+                    split_method = [2,2]
+                    self.blocks[-1].append(S3Block(
+                                            hidden_dim=dim,
+                                            drop_path=drop_path[i] if isinstance(drop_path, list) else drop_path,
+                                            norm_layer=norm_layer,
+                                            attn_drop_rate=attn_drop,
+                                            d_state=d_state,
+                                            slice_method = split_method
+                                            ))
+                elif index==1:
+                    split_method = [2,4]
+                    self.blocks[-1].append(S3Block(
+                                            hidden_dim=dim,
+                                            drop_path=drop_path[i] if isinstance(drop_path, list) else drop_path,
+                                            norm_layer=norm_layer,
+                                            attn_drop_rate=attn_drop,
+                                            d_state=d_state,
+                                            slice_method = split_method
+                                            ))
+                elif index==2:
+                    split_method = [4,2]
+                    self.blocks[-1].append(S3Block(
+                                            hidden_dim=dim,
+                                            drop_path=drop_path[i] if isinstance(drop_path, list) else drop_path,
+                                            norm_layer=norm_layer,
+                                            attn_drop_rate=attn_drop,
+                                            d_state=d_state,
+                                            slice_method = split_method
+                                            ))
+                elif index==3:
+                    split_method = [4,4]
+                    self.blocks[-1].append(S3Block(
+                                            hidden_dim=dim,
+                                            drop_path=drop_path[i] if isinstance(drop_path, list) else drop_path,
+                                            norm_layer=norm_layer,
+                                            attn_drop_rate=attn_drop,
+                                            d_state=d_state,
+                                            slice_method = split_method
+                                            ))
         
         if True: # is this really applied? Yes, but been overriden later in VSSM!
             def _init_weights(module: nn.Module):
@@ -619,18 +696,20 @@ class VSSLayer_up(nn.Module):
 
         if upsample is not None:
             self.upsample = upsample(dim=dim, norm_layer=norm_layer)
+            
         else:
             self.upsample = None
 
 
-    def forward(self, x):
+    def forward(self, x,archi_decoder):
         if self.upsample is not None:
+           
             x = self.upsample(x)
-        for blk in self.blocks:
-            if self.use_checkpoint:
-                x = checkpoint.checkpoint(blk, x)
-            else:
-                x = blk(x)
+
+
+        for archs,arch_id in zip(self.blocks,archi_decoder):
+        
+            x = archs[arch_id](x)
         return x
     
 
@@ -716,7 +795,7 @@ class VSSM(nn.Module):
     def no_weight_decay_keywords(self):
         return {'relative_position_bias_table'}
 
-    def forward_features(self, x):
+    def forward_features(self, x, archi_encoder):
         skip_list = []
 
         x = self.patch_embed(x)
@@ -725,17 +804,33 @@ class VSSM(nn.Module):
             x = x + self.absolute_pos_embed
         x = self.pos_drop(x)
 
-        for layer in self.layers:
+        for index,layer in enumerate(self.layers):
             skip_list.append(x)
-            x = layer(x)
+            if index==0:
+                x = layer(x,archi_encoder[:2])
+            elif index==1:
+                x = layer(x,archi_encoder[2:4])
+            elif index==2:
+                x = layer(x,archi_encoder[4:13])
+            elif index==3:
+                x = layer(x,archi_encoder[13:])
         return x, skip_list
     
-    def forward_features_up(self, x, skip_list):
+    def forward_features_up(self, x, skip_list,archi_decoder):
+     
         for inx, layer_up in enumerate(self.layers_up):
             if inx == 0:
-                x = layer_up(x)
+             
+                x = layer_up(x,archi_decoder[:2])
+            
+            elif inx==1:
+                x = layer_up(x+skip_list[-inx],archi_decoder[2:4])
+
+            elif inx==2:
+                x = layer_up(x+skip_list[-inx],archi_decoder[4:6])
             else:
-                x = layer_up(x+skip_list[-inx])
+                
+                x = layer_up(x+skip_list[-inx],archi_decoder[6:])
 
         return x
     
@@ -755,9 +850,13 @@ class VSSM(nn.Module):
             x = layer(x)
         return x
 
-    def forward(self, x):
-        x, skip_list = self.forward_features(x)
-        x = self.forward_features_up(x, skip_list)
+    def forward(self, x,architecture):
+
+        archi_encoder = architecture[:15]
+        archi_decoder = architecture[15:]
+
+        x, skip_list = self.forward_features(x,archi_encoder)
+        x = self.forward_features_up(x, skip_list,archi_decoder)
         x = self.forward_final(x)
         
         return x

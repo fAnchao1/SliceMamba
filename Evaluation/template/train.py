@@ -1,14 +1,14 @@
 import torch
 from torch.utils.data import DataLoader
 import timm
-from datasets.dataset import Poly_datasets
+from datasets.dataset import Skin_datasets
 from tensorboardX import SummaryWriter
 from models.smunet.smunet import SMUNet
 
 from engine import *
 import os
 import sys
-
+import pickle
 from utils import *
 from configs.config_setting import setting_config
 
@@ -51,30 +51,39 @@ def main(config):
 
 
     print('#----------Preparing dataset----------#')
-    train_dataset = Poly_datasets(config.data_path, config, train=True)
+    train_dataset = Skin_datasets(config.data_path, config, type='train')
     train_loader = DataLoader(train_dataset,
                                 batch_size=config.batch_size, 
                                 shuffle=True,
                                 pin_memory=True,
                                 num_workers=config.num_workers)
-
-    val_loader_dict = {}
-    for dataset in ['ClinicDB', 'Kvasir']:
-        val_dataset = Poly_datasets(config.data_path, config, train=False,test_dataset = dataset)
-        val_loader = DataLoader(val_dataset,
+    val_dataset = Skin_datasets(config.data_path, config, type='val')
+    val_loader = DataLoader(val_dataset,
                                 batch_size=1,
                                 shuffle=False,
                                 pin_memory=True, 
                                 num_workers=config.num_workers,
                                 drop_last=True)
-        val_loader_dict[dataset] = val_loader
+
+
+
+    arch_path = './arch.pkl'
+    if os.path.exists(arch_path):
+        with open(arch_path,'rb') as f:
+            architecture=pickle.load(f)
+    else:
+        raise NotImplementedError
+    print(f"**************architecture is {architecture}*************")
 
     print('#----------Prepareing Model----------#')
+    
+
     model_cfg = config.model_config
     if config.network == 'smunet':
         model = SMUNet(
             num_classes=model_cfg['num_classes'],
             input_channels=model_cfg['input_channels'],
+            architecture = architecture,
             depths=model_cfg['depths'],
             depths_decoder=model_cfg['depths_decoder'],
             drop_path_rate=model_cfg['drop_path_rate'],
@@ -85,9 +94,9 @@ def main(config):
     else: raise Exception('network in not right!')
     model = model.cuda()
 
-    cal_params_flops(model, 256, logger)
 
- 
+    # cal_params_flops(model, 256, logger)
+
 
 
     print('#----------Prepareing loss, opt, sch and amp----------#')
@@ -96,11 +105,14 @@ def main(config):
     scheduler = get_scheduler(config, optimizer)
 
 
+
+
+
     print('#----------Set other params----------#')
     min_loss = 999
     start_epoch = 1
     min_epoch = 1
-
+    max_miou = 0
 
 
 
@@ -140,25 +152,24 @@ def main(config):
             writer
         )
 
-        loss_all = []
-        for name in ['ClinicDB', 'Kvasir']:
-            val_loader_t = val_loader_dict[name]
-            loss_t = val_one_epoch(
-                    val_loader_t,
-                    model,
-                    criterion,
-                    epoch,
-                    logger,
-                    config,
-                    val_data_name = name
-                )
-            loss_all.append(loss_t)
-        loss = np.mean(loss_all)
+        loss,miou = val_one_epoch(
+                val_loader,
+                model,
+                criterion,
+                epoch,
+                logger,
+                config
+            )
 
         if loss < min_loss:
-            torch.save(model.state_dict(), os.path.join(checkpoint_dir, 'best.pth'))
+            torch.save(model.state_dict(), os.path.join(checkpoint_dir, 'best_loss.pth'))
             min_loss = loss
             min_epoch = epoch
+
+        if miou>max_miou:
+            torch.save(model.state_dict(), os.path.join(checkpoint_dir, 'best_miou.pth'))
+            max_miou = miou
+            
 
         torch.save(
             {
@@ -170,8 +181,29 @@ def main(config):
                 'optimizer_state_dict': optimizer.state_dict(),
                 'scheduler_state_dict': scheduler.state_dict(),
             }, os.path.join(checkpoint_dir, 'latest.pth')) 
-   
 
+    if os.path.exists(os.path.join(checkpoint_dir, 'best_loss.pth')):
+        print('#----------Testing-best-loss----------#')
+        best_weight = torch.load(config.work_dir + 'checkpoints/best_loss.pth', map_location=torch.device('cpu'))
+        model.load_state_dict(best_weight)
+        loss = test_one_epoch(
+                val_loader,
+                model,
+                criterion,
+                logger,
+                config,
+            )
+    if os.path.exists(os.path.join(checkpoint_dir, 'best_miou.pth')):
+        print('#----------Testing-best-miou----------#')
+        best_weight = torch.load(config.work_dir + 'checkpoints/best_miou.pth', map_location=torch.device('cpu'))
+        model.load_state_dict(best_weight)
+        loss = test_one_epoch(
+                val_loader,
+                model,
+                criterion,
+                logger,
+                config,
+            )
 
 
 if __name__ == '__main__':

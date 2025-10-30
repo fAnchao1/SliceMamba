@@ -51,13 +51,13 @@ def main(config):
 
 
     print('#----------Preparing dataset----------#')
-    train_dataset = Skin_datasets(config.data_path, config, train=True)
+    train_dataset = Skin_datasets(config.data_path, config, type='train')
     train_loader = DataLoader(train_dataset,
                                 batch_size=config.batch_size, 
                                 shuffle=True,
                                 pin_memory=True,
                                 num_workers=config.num_workers)
-    val_dataset = Skin_datasets(config.data_path, config, train=False)
+    val_dataset = Skin_datasets(config.data_path, config, type='val')
     val_loader = DataLoader(val_dataset,
                                 batch_size=1,
                                 shuffle=False,
@@ -66,10 +66,9 @@ def main(config):
                                 drop_last=True)
 
 
-
-
-
     print('#----------Prepareing Model----------#')
+    
+
     model_cfg = config.model_config
     if config.network == 'smunet':
         model = SMUNet(
@@ -85,29 +84,16 @@ def main(config):
     else: raise Exception('network in not right!')
     model = model.cuda()
 
-    cal_params_flops(model, 256, logger)
-
-
-
-
-
     print('#----------Prepareing loss, opt, sch and amp----------#')
     criterion = config.criterion
     optimizer = get_optimizer(config, model)
     scheduler = get_scheduler(config, optimizer)
 
 
-
-
-
     print('#----------Set other params----------#')
     min_loss = 999
     start_epoch = 1
     min_epoch = 1
-
-
-
-
 
     if os.path.exists(resume_model):
         print('#----------Resume Model and Other params----------#')
@@ -157,6 +143,8 @@ def main(config):
             torch.save(model.state_dict(), os.path.join(checkpoint_dir, 'best.pth'))
             min_loss = loss
             min_epoch = epoch
+        
+       
 
         torch.save(
             {
@@ -168,22 +156,6 @@ def main(config):
                 'optimizer_state_dict': optimizer.state_dict(),
                 'scheduler_state_dict': scheduler.state_dict(),
             }, os.path.join(checkpoint_dir, 'latest.pth')) 
-
-    if os.path.exists(os.path.join(checkpoint_dir, 'best.pth')):
-        print('#----------Testing----------#')
-        best_weight = torch.load(config.work_dir + 'checkpoints/best.pth', map_location=torch.device('cpu'))
-        model.load_state_dict(best_weight)
-        loss = test_one_epoch(
-                val_loader,
-                model,
-                criterion,
-                logger,
-                config,
-            )
-        os.rename(
-            os.path.join(checkpoint_dir, 'best.pth'),
-            os.path.join(checkpoint_dir, f'best-epoch{min_epoch}-loss{min_loss:.4f}.pth')
-        )      
 
 
 if __name__ == '__main__':

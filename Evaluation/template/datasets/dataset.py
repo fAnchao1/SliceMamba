@@ -43,7 +43,7 @@ class Skin_datasets(Dataset):
                 img_path = path_Data+'search/images/' + images_list[i]
                 mask_path = path_Data+'search/masks/' + masks_list[i]
                 self.data.append([img_path, mask_path])
-            self.transformer = config.train_transformer
+            self.transformer = config.test_transformer
         
     def __getitem__(self, indx):
         img_path, msk_path = self.data[indx]
@@ -127,7 +127,7 @@ class Synapse_dataset(Dataset):
         sample['case_name'] = self.sample_list[idx].strip('\n')
         return sample
 
-        
+
 def random_rot_flip(image, label):
     k = np.random.randint(0, 4)
     image = np.rot90(image, k)
