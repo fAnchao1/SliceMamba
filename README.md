@@ -1,6 +1,6 @@
 # SliceMamba
 
-Official code for paper: SliceMamba with Neural Architecture Search for Medical Image Segmentation
+The official pytorch implementation of the paper [SliceMamba with Neural Architecture Search for Medical Image Segmentation](https://ieeexplore.ieee.org/abstract/document/10976597/)
 
 #### Abstract
 Despite the progress made in Mamba-based medical image segmentation models, existing methods utilizing unidirectional or multi-directional feature scanning
@@ -40,3 +40,15 @@ You can follow [VM-UNet](https://github.com/JCruan519/VM-UNet?tab=readme-ov-file
 - cd data/**
 - python train.py
 
+## Citation
+
+If you find our work useful, please cite:
+
+```bibtex
+@article{fan2025slicemamba,
+  title={Slicemamba with neural architecture search for medical image segmentation},
+  author={Fan, Chao and Yu, Hongyuan and Huang, Yan and Wang, Liang and Yang, Zhenghan and Jia, Xibin},
+  journal={IEEE Journal of Biomedical and Health Informatics},
+  year={2025},
+  publisher={IEEE}
+}
