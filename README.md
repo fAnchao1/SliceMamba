@@ -48,8 +48,11 @@ Despite the progress made in Mamba-based medical image segmentation models, exis
 [imgs/result_vis.jpg](imgs/result_vis.jpg)
 
 <div align="center">
-  <img src="imgs/sota_table1.jpg" alt="SOTA Comparison — Table 1" width="48%">
-  <img src="imgs/sota_table2.jpg" alt="SOTA Comparison — Table 2" width="48%">
+  <img src="imgs/sota_table1.jpg" alt="SOTA Comparison — Table 1" width="85%">
+</div>
+
+<div align="center">
+  <img src="imgs/sota_table2.jpg" alt="SOTA Comparison — Table 2" width="85%">
 </div>
 
 [imgs/sota_table1.jpg](imgs/sota_table1.jpg) · [imgs/sota_table2.jpg](imgs/sota_table2.jpg)
@@ -144,3 +147,22 @@ If you find our work useful, please cite:
 ## 🤝 Acknowledgements
 - VMamba pretraining reference: https://github.com/MzeroMiko/VMamba
 - VM-UNet dataset preparation: https://github.com/JCruan519/VM-UNet
+
+---
+
+## 📜 License
+
+This project is licensed under the Apache License, Version 2.0.
+
+```
+Licensed under the Apache License, Version 2.0 (the "License"); 
+you may not use this file except in compliance with the License. 
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software distributed 
+under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR 
+CONDITIONS OF ANY KIND, either express or implied. See the License for the 
+specific language governing permissions and limitations under the License.
+```
